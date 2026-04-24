@@ -1,0 +1,100 @@
+{
+  "anthropic_tool_result_env_dump": {
+    "model": "claude-sonnet-4-5",
+    "system": "You are Claude Code. Be helpful.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Please read my env file and tell me what keys I have."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {"type": "text", "text": "I'll read it now."},
+          {
+            "type": "tool_use",
+            "id": "toolu_01",
+            "name": "Read",
+            "input": {"file_path": "/Users/alice/proj/.env"}
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01",
+            "content": [
+              {
+                "type": "text",
+                "text": "STRIPE_SECRET=sk_live_abcdef123456789\nSENDGRID_API_KEY=SG.zzzzzzzzzzzzzzzzzzzzzz\nADMIN_EMAIL=alice@example.com\n"
+              }
+            ]
+          },
+          {"type": "text", "text": "Can you double-check alice@example.com is valid?"}
+        ]
+      }
+    ]
+  },
+  "anthropic_tool_result_string_content": {
+    "model": "claude-sonnet-4-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_02",
+            "content": "quick string form with email bob@example.com"
+          }
+        ]
+      }
+    ]
+  },
+  "openai_mixed_content_forms": {
+    "model": "gpt-4o-mini",
+    "messages": [
+      {"role": "system", "content": "You write concise Python."},
+      {"role": "user", "content": "Ping foo@bar.com with this secret: sk-live-AAAABBBB"},
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "And also deal with baz@qux.io."},
+          {"type": "text", "text": "Key is sk-live-AAAABBBB (same one)."}
+        ]
+      }
+    ]
+  },
+  "openai_tool_call_arguments_secret": {
+    "model": "gpt-4o-mini",
+    "messages": [
+      {"role": "user", "content": "Upload the log."},
+      {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_01",
+            "type": "function",
+            "function": {
+              "name": "upload",
+              "arguments": "{\"endpoint\": \"https://upload.example.com\", \"token\": \"sk-live-EMBEDDED99\", \"notify\": \"ops@example.com\"}"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "repeated_secret_determinism": {
+    "model": "claude-sonnet-4-5",
+    "messages": [
+      {"role": "user", "content": "First mention: sk-live-REPEAT42"},
+      {"role": "assistant", "content": "Got it."},
+      {"role": "user", "content": "Second mention of sk-live-REPEAT42 should mask identically."}
+    ]
+  },
+  "overlapping_candidate_spans": {
+    "text": "email user@example.com sits inside user@example.com.backups"
+  }
+}
