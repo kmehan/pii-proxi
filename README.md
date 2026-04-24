@@ -130,6 +130,32 @@ code-masker test "my key is sk-live-AAAABBBBCCCCDDDD and email foo@bar.com"
 
 This prints detected spans and the masked form. Loading the MLX model takes a few seconds the first time.
 
+## Observing masking activity
+
+Every proxied request emits a one-line summary to the proxy's stdout showing how many spans were masked, broken down by label:
+
+```
+INFO:     code_masker.mask: masked 2 span(s) across 1 text(s): private_email=1, secret=1
+INFO:     127.0.0.1:65155 - "POST /anthropic/v1/messages HTTP/1.1" 200 OK
+```
+
+Counts only — no plaintext. Safe to leave on anywhere.
+
+For local debugging you can also log the detected plaintext alongside each label. This is **off by default** (a privacy tool shouldn't log secrets unless you ask it to). Turn it on by adding one line to your config:
+
+```bash
+echo 'log_entities = true' >> ~/.config/code-masker/config.toml
+```
+
+Then restart the proxy. You'll additionally see:
+
+```
+INFO:     code_masker.mask:   secret: ' sk-live-AAAABBBBCCCCDDDD'
+INFO:     code_masker.mask:   private_email: ' alice@example.com'
+```
+
+**Do not enable `log_entities` on a shared machine, in a CI job, or anywhere the proxy's stdout could be captured, uploaded, or shipped off-box** — the whole point of the proxy is to keep those strings off the wire, and logging them locally defeats that if the logs aren't private.
+
 ## Config
 
 Optional TOML at `~/.config/code-masker/config.toml`:
@@ -139,10 +165,11 @@ port = 8787
 backend = "mlx"                   # "mlx" | "onnx"
 model_path = "~/.cache/code-masker/models/mlx-8bit"
 calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
-disabled_labels = []              # e.g. ["EMAIL"] to skip that entity class
+disabled_labels = []              # e.g. ["private_email"] to skip that entity class
 log_path = "~/.local/state/code-masker/audit.log"
 anthropic_upstream = "https://api.anthropic.com"
 openai_upstream = "https://api.openai.com"
+log_entities = false              # see "Observing masking activity" — off by default
 ```
 
 Every field also reads from `CODE_MASKER_<NAME>` env vars for one-off overrides.
