@@ -9,3 +9,8 @@ calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
 # log_path = "~/.local/state/code-masker/audit.log"
 # anthropic_upstream = "https://api.anthropic.com"
 # openai_upstream = "https://api.openai.com"
+
+# Logs the detected plaintext alongside each entity label. Off by default.
+# Safe for a single-user local setup; do NOT enable anywhere the proxy's
+# stdout/logs could be captured, uploaded, or shipped off-box.
+# log_entities = true

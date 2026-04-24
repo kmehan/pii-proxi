@@ -49,6 +49,12 @@ class Config(BaseSettings):
     log_path: str = "~/.local/state/code-masker/audit.log"
     anthropic_upstream: str = "https://api.anthropic.com"
     openai_upstream: str = "https://api.openai.com"
+    # When true, each proxied request emits an INFO line containing the
+    # detected plaintext alongside the label. Off by default — a privacy
+    # tool shouldn't log secrets unless you ask it to. Safe for local
+    # single-user use; do not enable on shared machines or in any context
+    # where the proxy's stdout/log may be captured, uploaded, or shipped.
+    log_entities: bool = False
 
     @field_validator("model_path", "calibration_path", "log_path", mode="before")
     @classmethod
