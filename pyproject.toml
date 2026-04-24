@@ -23,7 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mlx = ["mlx-lm>=0.14"]
+mlx = [
+    "mlx>=0.18",
+    # The ``openai_privacy_filter`` architecture isn't in the 0.1.0 PyPI
+    # release yet; install from git (same maintainer who publishes the
+    # mlx-community model conversions). Switch back to a PyPI pin once a
+    # release ships with ``mlx_embeddings/models/openai_privacy_filter.py``.
+    "mlx-embeddings @ git+https://github.com/Blaizzy/mlx-embeddings.git",
+]
 onnx = ["onnxruntime>=1.17"]
 dev = [
     "pytest>=8.0",

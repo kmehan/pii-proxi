@@ -1,0 +1,11 @@
+backend = "mlx"   # or "onnx"
+model_path = "~/.cache/code-masker/models/mlx-8bit"
+calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
+
+# Optional — all fields below have sensible defaults.
+# port = 8787
+# host = "127.0.0.1"
+# disabled_labels = []                 # e.g. ["private_email"] to skip that class
+# log_path = "~/.local/state/code-masker/audit.log"
+# anthropic_upstream = "https://api.anthropic.com"
+# openai_upstream = "https://api.openai.com"

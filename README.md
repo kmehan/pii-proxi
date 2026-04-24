@@ -4,38 +4,93 @@
 
 Detection runs on-device using OpenAI's open-weight privacy-filter model (~1.5 GB MLX 8-bit on Apple Silicon, ~2.6 GB ONNX FP16 elsewhere). Nothing about what was flagged leaves the machine.
 
-## Install
+## Setup
 
-Apple Silicon (recommended):
+Requires Python 3.11+.
+
+### 1. Clone and create a virtualenv
+
+```bash
+git clone <this repo> code-masker
+cd code-masker
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install
+
+Apple Silicon (recommended — uses MLX, fastest on M-series):
 
 ```bash
 pip install -e ".[mlx,dev]"
 ```
 
-Everything else:
+> **Note:** the `[mlx]` extra pulls `mlx-embeddings` from git (the `openai_privacy_filter` architecture isn't in its 0.1.0 PyPI release yet). This will be swapped back to a PyPI pin once the maintainer cuts a release containing it.
+
+Linux / Windows / Intel Mac (ONNX backend):
 
 ```bash
 pip install -e ".[onnx,dev]"
 ```
 
-## Download the model
+After install, `code-masker --help` should work *while the venv is active*. The binary lives at `.venv/bin/code-masker` — if you want it on your global `$PATH`, install with `pipx install -e ".[mlx]"` instead of the commands above.
 
-MLX build:
+### 3. Download the model
 
 ```bash
-huggingface-cli download mlx-community/openai-privacy-filter-8bit \
+pip install huggingface_hub           # if you don't have it already; ships the `hf` CLI
+
+# MLX weights (Apple Silicon build)
+hf download mlx-community/openai-privacy-filter-8bit \
     --local-dir ~/.cache/code-masker/models/mlx-8bit
+
+# Viterbi calibration file — lives in the ONNX repo but is needed by both backends
+hf download yasserrmd/privacy-filter-ONNX viterbi_calibration.json \
+    --local-dir ~/.cache/code-masker/models
 ```
 
-ONNX build — point `model_path` in your config at wherever you downloaded the FP16 ONNX export.
+> The older `huggingface-cli` command is deprecated; use `hf` instead. If you see the deprecation warning, you're on a recent `huggingface_hub` — `hf` is already installed.
 
-## Run
+ONNX users also download the FP16 export from `yasserrmd/privacy-filter-ONNX` and point `model_path` at that directory (see Config below).
+
+### 4. Create the config
+
+Copy the example config:
+
+```bash
+mkdir -p ~/.config/code-masker
+cp config.example.toml ~/.config/code-masker/config.toml
+```
+
+The example is set up for the MLX backend with the paths from step 3. Edit it if you're on ONNX or put the model somewhere else.
+
+<details>
+<summary>Prefer to create it by hand?</summary>
+
+```bash
+mkdir -p ~/.config/code-masker
+nano ~/.config/code-masker/config.toml     # paste the three lines, Ctrl-O, Ctrl-X
+```
+
+Minimum contents:
+
+```toml
+backend = "mlx"
+model_path = "~/.cache/code-masker/models/mlx-8bit"
+calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
+```
+
+(Avoid the `cat > file <<'EOF' … EOF` heredoc form interactively — the closing `EOF` has to be at column 0 on its own line, and it's easy to get stuck in an unterminated heredoc.)
+
+</details>
+
+### 5. Start the proxy
 
 ```bash
 code-masker serve
 ```
 
-On startup the proxy prints the two `*_BASE_URL` lines to export. Example:
+You should see:
 
 ```
   code-masker listening on 127.0.0.1:8787
@@ -43,7 +98,37 @@ On startup the proxy prints the two `*_BASE_URL` lines to export. Example:
     export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
 ```
 
-Paste those into the shell that'll launch your client, then fire up Claude Code / Codex CLI / aider / etc. as usual.
+Leave this terminal running.
+
+### 6. Point your coding assistant at the proxy
+
+In a **separate terminal**, export the base URL for whichever client you use, then launch it normally:
+
+**Claude Code** (API key *or* Pro/Max OAuth — both work):
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
+claude
+```
+
+**Codex CLI / aider / continue.dev / any OpenAI-compatible client:**
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
+codex    # or: aider, continue, etc.
+```
+
+**Cursor (BYO API key mode only):** Settings → Models → OpenAI Base URL → `http://127.0.0.1:8787/openai/v1`. Cursor Pro subscriptions are *not* supported — see the table below.
+
+### Smoke test
+
+Before wiring a real client, sanity-check the detector on a throwaway string:
+
+```bash
+code-masker test "my key is sk-live-AAAABBBBCCCCDDDD and email foo@bar.com"
+```
+
+This prints detected spans and the masked form. Loading the MLX model takes a few seconds the first time.
 
 ## Config
 

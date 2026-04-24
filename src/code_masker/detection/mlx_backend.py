@@ -1,29 +1,20 @@
 """MLX backend for the privacy-filter detector.
 
-All MLX-specific imports are performed lazily inside ``__init__`` so that
-the module can be imported on non-Mac (or Mac without MLX installed)
-platforms without failing — the caller only pays the import cost when
-actually constructing an ``MLXDetector``.
+The model is a token-classification encoder (``OpenAIPrivacyFilterForTokenClassification``),
+not a causal LM, so it loads via ``mlx_embeddings.utils.load`` rather than
+``mlx_lm.load``. That detail matters: ``mlx_lm`` only recognizes decoder
+architectures from its built-in model registry, and silently fails with
+``Model type openai_privacy_filter not supported`` on this one.
 
-Expected model layout (``mlx-community/openai-privacy-filter-8bit``):
+Expected model layout (``mlx-community/openai-privacy-filter-8bit``)::
 
     <model_path>/
-        config.json          # contains id2label
-        tokenizer.json       # (unused here — we use tiktoken directly)
-        model.safetensors    # quantised weights
+        config.json          # has id2label
+        tokenizer.json       # unused — we tokenize with tiktoken for ONNX parity
+        model.safetensors    # quantized weights + classifier head
 
-Because ``mlx_lm.load`` returns a causal-LM wrapper by default and the
-privacy filter is a token-classification head, we reach for the
-underlying module's forward pass and read the classifier logits out of
-its output. ``mlx_lm`` exposes a ``return_hidden_states`` path on recent
-versions; we gracefully fall back to looking for a classifier on the
-loaded model.
-
-Since the mlx-community build ships with the classifier head attached
-(the safetensors file contains ``classifier.weight`` / ``classifier.bias``
-shards), ``mlx_lm.load`` handles this transparently in practice; if a
-future build splits the head, callers can override ``_forward_logits``
-in a subclass.
+All MLX imports are lazy so this module can be imported on non-Mac
+platforms without the MLX wheels installed.
 """
 
 from __future__ import annotations
@@ -54,15 +45,13 @@ class MLXDetector:
         calibration_path: str | Path,
         max_batch: int = 8,
     ) -> None:
-        # Import lazily so that `import code_masker.detection` works on
-        # platforms without MLX.
         try:
-            import mlx.core as mx  # noqa: F401
-            from mlx_lm import load as mlx_load  # type: ignore
+            import mlx.core as mx
+            from mlx_embeddings.utils import load as mlx_embed_load  # type: ignore
         except ImportError as exc:  # pragma: no cover - env-specific
             raise ImportError(
-                "MLXDetector requires the 'mlx' and 'mlx-lm' packages. "
-                "Install them (Apple Silicon only) via `pip install mlx mlx-lm`."
+                "MLXDetector requires the 'mlx' and 'mlx-embeddings' packages. "
+                "Install them (Apple Silicon only) via `pip install mlx mlx-embeddings`."
             ) from exc
 
         self._mx = mx
@@ -76,13 +65,14 @@ class MLXDetector:
         calibration = load_calibration(calibration_path)
         self._post = PostProcessor(id2label=id2label, calibration=calibration)
 
-        self._model, _tokenizer = mlx_load(str(self._model_path))
+        # mlx-embeddings bundles a tokenizer, but we tokenize with tiktoken
+        # (the model's reference tokenizer is o200k_base) to keep the MLX and
+        # ONNX backends bit-identical in their post-processing inputs.
+        self._model, _tokenizer = mlx_embed_load(str(self._model_path))
         self._warmed_up = False
 
     # ------------------------------------------------------------------
     def warmup(self) -> None:
-        """Run a single short forward pass to amortise JIT / cache costs."""
-
         if self._warmed_up:
             return
         self.detect([" "])
@@ -108,21 +98,14 @@ class MLXDetector:
     def _forward_logits(
         self, input_ids: np.ndarray, attention_mask: np.ndarray
     ) -> np.ndarray:
-        """Run the MLX forward pass and return ``[B, S, num_labels]`` as numpy."""
-
         mx = self._mx
         ids = mx.array(input_ids)
         mask = mx.array(attention_mask)
-        # ``mlx_lm`` models accept ``(input_ids, mask=...)`` or positional
-        # masks depending on version; try the common kwargs first.
-        try:
-            out = self._model(ids, attention_mask=mask)
-        except TypeError:
-            out = self._model(ids)
+        out = self._model(ids, attention_mask=mask)
 
-        # Different mlx_lm versions return either raw logits or a wrapper.
         logits = getattr(out, "logits", out)
-        # Materialise to numpy via MLX -> host copy.
+        # mx.eval forces evaluation of the lazy graph before the host copy.
+        mx.eval(logits)
         arr = np.asarray(logits)
         if arr.ndim != 3:
             raise RuntimeError(
