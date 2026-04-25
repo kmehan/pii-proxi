@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 
 from ..masking.placeholder import PlaceholderMap, Span, apply_spans
 from ..masking.injector import inject
+from ..masking.sse_unmask import SSEUnmask
 from ..masking.unmask_stream import UnmaskStream
 
 
@@ -241,8 +242,13 @@ async def _stream_response(
             media_type=upstream.headers.get("content-type"),
         )
 
+    # Streaming responses must use the SSE-aware unmasker: the upstream
+    # tokenizer regularly fragments a placeholder across multiple text-delta
+    # events, and a byte-level scan (UnmaskStream) can't recover because the
+    # JSON/SSE framing bytes between fragments break the placeholder pattern.
+    # See masking/sse_unmask.py for the full rationale.
     async def gen() -> Any:
-        transform = UnmaskStream(pmap)
+        transform = SSEUnmask(pmap)
         try:
             async for chunk in upstream.aiter_bytes():
                 out = transform.feed(chunk)

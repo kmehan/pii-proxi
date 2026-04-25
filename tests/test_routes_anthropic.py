@@ -213,6 +213,99 @@ def test_streaming_unmasks_lowercase_label_placeholder():
     assert "⟦".encode() not in received
 
 
+def test_streaming_unmasks_placeholder_split_across_events():
+    """Regression: real upstream tokenizers fragment a placeholder across
+    multiple ``content_block_delta`` events. Each fragment lands in its own
+    JSON ``text`` field, separated by SSE/JSON framing bytes that aren't part
+    of the logical text stream. A byte-level scan saw ``⟦…⟧`` enclosing the
+    framing and gave up, leaking placeholders to the client. The unmasker must
+    reconstruct the per-block text stream and substitute even when the
+    placeholder spans events.
+    """
+    sample = "Ada Lovelace"
+    prompt = f"My name is {sample}. Who am I?"
+    name_start = prompt.index(sample)
+    detector = FakeDetector({
+        prompt: [FakeSpan(name_start, name_start + len(sample), "private_person")],
+    })
+    pmap = PlaceholderMap(new_session_key())
+    app = _make_app(detector, pmap=pmap)
+
+    ph = pmap.mask(sample, "private_person")
+    # Split the placeholder across three text_delta events. The bytes between
+    # the open ⟦ and close ⟧ are SSE/JSON framing — not the placeholder body.
+    third = len(ph) // 3
+    chunk1 = ph[:third]
+    chunk2 = ph[third : 2 * third]
+    chunk3 = ph[2 * third :]
+
+    sse_body = (
+        b"event: content_block_start\n"
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"You said your name is '
+        + chunk1.encode()
+        + b'"}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"'
+        + chunk2.encode()
+        + b'"}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"'
+        + chunk3.encode()
+        + b'."}}\n\n'
+        b"event: content_block_stop\n"
+        b'data: {"type":"content_block_stop","index":0}\n\n'
+        b"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    )
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.post(f"{UPSTREAM}/v1/messages").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=sse_body,
+            )
+        )
+        with TestClient(app) as client:
+            resp = client.post(
+                "/anthropic/v1/messages",
+                headers={
+                    "x-api-key": "sk-ant-fake",
+                    "anthropic-version": "2023-06-01",
+                    "accept": "text/event-stream",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-3-opus-20240229",
+                    "max_tokens": 128,
+                    "stream": True,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+
+    assert resp.status_code == 200
+    received = resp.content
+    # Decode every text_delta the client would render and concatenate.
+    rendered_parts: list[str] = []
+    for raw_event in received.split(b"\n\n"):
+        for line in raw_event.splitlines():
+            if not line.startswith(b"data: "):
+                continue
+            payload = line[len(b"data: "):]
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            delta = data.get("delta") if isinstance(data, dict) else None
+            if isinstance(delta, dict) and isinstance(delta.get("text"), str):
+                rendered_parts.append(delta["text"])
+    rendered = "".join(rendered_parts)
+    assert sample in rendered, f"client should see plaintext, got: {rendered!r}"
+    assert "private_person_" not in rendered
+    assert "⟦" not in rendered
+
+
 def test_upstream_error_passes_through_unchanged():
     detector = FakeDetector()
     app = _make_app(detector)
