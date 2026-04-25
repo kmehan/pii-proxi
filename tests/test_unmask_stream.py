@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import pytest
 
-from code_masker.masking.placeholder import PlaceholderMap
-from code_masker.masking.unmask_stream import UnmaskStream
+from pii_proxi.masking.placeholder import PlaceholderMap
+from pii_proxi.masking.unmask_stream import UnmaskStream
 
 
 def _pmap_with(original: str, label: str) -> tuple[PlaceholderMap, str]:
@@ -153,6 +152,42 @@ def test_empty_feeds_and_flush_noop():
     u = UnmaskStream(pmap)
     assert u.feed(b"") == b""
     assert u.flush() == b""
+
+
+def test_lowercase_label_round_trip_raw_form():
+    """Regression: the privacy-filter detector emits lowercase labels
+    (``private_person``, ``private_email``, ``secret``). An older regex
+    accepted only ``[A-Z][A-Z0-9_]*`` and silently leaked every real
+    placeholder back through the client. Use synthetic data — never real PII.
+    """
+    pmap, ph = _pmap_with("Ada Lovelace", "private_person")
+    payload = f"hello {ph}, welcome".encode("utf-8")
+    assert _feed_chunks(pmap, [payload]) == b"hello Ada Lovelace, welcome"
+
+
+def test_lowercase_label_round_trip_json_escaped_form():
+    """Same regression, JSON-escaped variant. SSE streams from upstream JSON
+    encoders default to ``ensure_ascii=True``, which turns ⟦ → \\u27e6."""
+    import json as _json
+
+    pmap, ph = _pmap_with("ada@example.com", "private_email")
+    payload = _json.dumps({"text": f"contact {ph}"}).encode("utf-8")
+    assert b"\\u27e6" in payload  # sanity: upstream really ASCII-escaped it
+    out = _feed_chunks(pmap, [payload])
+    assert _json.loads(out.decode("utf-8")) == {"text": "contact ada@example.com"}
+
+
+def test_lowercase_label_split_at_every_offset():
+    """The streaming hold-back logic must work for lowercase labels too —
+    a placeholder split at any byte boundary still has to decode."""
+    pmap, ph = _pmap_with("Grace Hopper", "private_person")
+    payload = f"before {ph} after".encode("utf-8")
+    expected = b"before Grace Hopper after"
+    for split in range(len(payload) + 1):
+        pmap2, ph2 = _pmap_with("Grace Hopper", "private_person")
+        assert ph2 == ph
+        out = _feed_chunks(pmap2, [payload[:split], payload[split:]])
+        assert out == expected, f"mismatch at split={split}: {out!r}"
 
 
 def test_backtoback_placeholders():
