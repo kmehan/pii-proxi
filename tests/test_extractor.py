@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
-from code_masker.masking.extractor import (
+from pii_proxi.masking.extractor import (
     JSON_STRING_SEP,
     extract_anthropic,
     extract_openai,

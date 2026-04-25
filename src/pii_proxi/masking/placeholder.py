@@ -27,11 +27,13 @@ __all__ = ["Span", "PlaceholderMap", "apply_spans", "DELIM_OPEN", "DELIM_CLOSE"]
 DELIM_OPEN = "⟦"
 DELIM_CLOSE = "⟧"
 
-# Labels come from the detector's fixed BIOES class set — ASCII-uppercase and
-# underscores only. Restricting the regex to that shape prevents accidentally
-# chewing up legitimate prose that happens to sit between ⟦ and ⟧.
+# Labels come from the detector's fixed BIOES class set — ASCII letters,
+# digits, and underscores. The privacy-filter model emits lowercase labels
+# (``private_email``, ``private_person``, ``secret``, ...), so the regex
+# accepts either case. An uppercase-only class would silently fail to match
+# real placeholders and leak them through ``UnmaskStream``.
 _PLACEHOLDER_RE = re.compile(
-    rf"{re.escape(DELIM_OPEN)}([A-Z][A-Z0-9_]*)_([0-9a-f]{{8}}){re.escape(DELIM_CLOSE)}"
+    rf"{re.escape(DELIM_OPEN)}([A-Za-z][A-Za-z0-9_]*)_([0-9a-f]{{8}}){re.escape(DELIM_CLOSE)}"
 )
 
 

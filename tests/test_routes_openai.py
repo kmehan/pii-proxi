@@ -9,10 +9,10 @@ import httpx
 import respx
 from fastapi.testclient import TestClient
 
-from code_masker.config import Config
-from code_masker.masking.placeholder import PlaceholderMap
-from code_masker.server import create_app
-from code_masker.session import new_session_key
+from pii_proxi.config import Config
+from pii_proxi.masking.placeholder import PlaceholderMap
+from pii_proxi.server import create_app
+from pii_proxi.session import new_session_key
 
 from .conftest import FakeDetector, FakeSpan
 

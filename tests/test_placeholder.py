@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import re
 import threading
 
 import pytest
 
-from code_masker.masking.placeholder import (
+from pii_proxi.masking.placeholder import (
     DELIM_CLOSE,
     DELIM_OPEN,
     PlaceholderMap,
     Span,
     apply_spans,
 )
-from code_masker.session import new_session_key
+from pii_proxi.session import new_session_key
 
 
 def _fresh() -> PlaceholderMap:
@@ -98,12 +97,27 @@ def test_apply_spans_drops_zero_length_spans():
     assert out == "abc"
 
 
-def test_pattern_only_matches_uppercase_label():
+def test_pattern_matches_lowercase_label():
+    """The privacy-filter model emits lowercase labels (``private_email``,
+    ``private_person``, ``secret``...). The pattern must match them, otherwise
+    ``UnmaskStream`` silently leaks every real placeholder back to the client.
+    """
     pmap = _fresh()
-    # Shape that *looks* like a placeholder but has lowercase label — must not
-    # match, so the unmask stream won't chew on random prose.
-    bad = f"{DELIM_OPEN}email_deadbeef{DELIM_CLOSE}"
-    assert pmap.pattern.fullmatch(bad) is None
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}private_email_deadbeef{DELIM_CLOSE}")
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}private_person_cafebabe{DELIM_CLOSE}")
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}secret_01234567{DELIM_CLOSE}")
+    # Uppercase still matches too (synthetic test labels rely on it).
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}EMAIL_deadbeef{DELIM_CLOSE}")
+
+
+def test_pattern_rejects_non_label_garbage_between_delimiters():
+    pmap = _fresh()
+    # Random prose between the delimiters must not match — that would let the
+    # unmasker chew on legitimate text that happens to sit inside ⟦ ⟧.
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN} just prose {DELIM_CLOSE}") is None
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}1email_deadbeef{DELIM_CLOSE}") is None  # leading digit
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}email_deadbee{DELIM_CLOSE}") is None  # short hex
+    assert pmap.pattern.fullmatch(f"{DELIM_OPEN}email_DEADBEEF{DELIM_CLOSE}") is None  # uppercase hex
 
 
 def test_thread_safety_stress():

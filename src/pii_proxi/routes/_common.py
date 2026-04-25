@@ -13,7 +13,9 @@ subscription tokens work: we never look at the credential, just relay it.
 from __future__ import annotations
 
 import json
-from typing import Any, Awaitable, Callable, Iterable
+import logging
+from collections import Counter
+from typing import Any, Callable, Iterable
 
 import httpx
 from fastapi import Request, Response
@@ -22,6 +24,9 @@ from fastapi.responses import StreamingResponse
 from ..masking.placeholder import PlaceholderMap, Span, apply_spans
 from ..masking.injector import inject
 from ..masking.unmask_stream import UnmaskStream
+
+
+_log = logging.getLogger("pii_proxi.mask")
 
 
 # Hop-by-hop headers per RFC 7230 §6.1, plus a couple of well-known
@@ -101,10 +106,16 @@ async def proxy_roundtrip(
     detector = request.app.state.detector
     pmap: PlaceholderMap = request.app.state.placeholder_map
 
-    disabled = frozenset(request.app.state.config.disabled_labels)
+    cfg = request.app.state.config
+    disabled = frozenset(cfg.disabled_labels)
+    log_entities = bool(getattr(cfg, "log_entities", False))
 
     pairs = extract(body)
     masked_pairs: list[tuple[str, str]] = []
+    # Aggregate counts only — never the plaintext, unless log_entities is on.
+    label_counts: Counter[str] = Counter()
+    # (label, plaintext) tuples collected only when log_entities is enabled.
+    entity_samples: list[tuple[str, str]] = []
     if pairs:
         texts = [t for _, t in pairs]
         all_spans: list[list[Span]] = detector.detect(texts)
@@ -115,8 +126,22 @@ async def proxy_roundtrip(
         for (ptr, text), spans in zip(pairs, all_spans):
             if disabled:
                 spans = [s for s in spans if s.label not in disabled]
+            label_counts.update(s.label for s in spans)
+            if log_entities and spans:
+                for s in spans:
+                    entity_samples.append((s.label, text[s.start : s.end]))
             masked_text = apply_spans(text, spans, pmap) if spans else text
             masked_pairs.append((ptr, masked_text))
+
+    total = sum(label_counts.values())
+    if total:
+        breakdown = ", ".join(f"{lbl}={n}" for lbl, n in sorted(label_counts.items()))
+        _log.info("masked %d span(s) across %d text(s): %s", total, len(pairs), breakdown)
+        if log_entities:
+            for label, sample in entity_samples:
+                _log.info("  %s: %r", label, sample)
+    elif pairs:
+        _log.info("no spans detected across %d text(s)", len(pairs))
 
     new_body = inject(body, masked_pairs) if masked_pairs else body
     forward_bytes = json.dumps(new_body, ensure_ascii=False).encode("utf-8")

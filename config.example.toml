@@ -1,0 +1,16 @@
+backend = "mlx"   # or "onnx"
+model_path = "~/.cache/pii-proxi/models/mlx-8bit"
+calibration_path = "~/.cache/pii-proxi/models/viterbi_calibration.json"
+
+# Optional — all fields below have sensible defaults.
+# port = 8787
+# host = "127.0.0.1"
+# disabled_labels = []                 # e.g. ["private_email"] to skip that class
+# log_path = "~/.local/state/pii-proxi/audit.log"
+# anthropic_upstream = "https://api.anthropic.com"
+# openai_upstream = "https://api.openai.com"
+
+# Logs the detected plaintext alongside each entity label. Off by default.
+# Safe for a single-user local setup; do NOT enable anywhere the proxy's
+# stdout/logs could be captured, uploaded, or shipped off-box.
+# log_entities = true

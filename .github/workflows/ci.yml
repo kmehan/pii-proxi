@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # The [mlx] extra is intentionally skipped: mlx-embeddings pulls from a
+      # git URL and the mlx runtime requires Apple Silicon, which the Linux
+      # runners don't have. The ONNX backend runs everywhere and exercises the
+      # same masking/unmasking pipeline.
+      - run: pip install -e ".[onnx,dev]"
+      - run: ruff check .
+      - run: pytest

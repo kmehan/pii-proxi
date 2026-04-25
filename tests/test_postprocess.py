@@ -14,8 +14,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from code_masker.detection.base import Span
-from code_masker.detection.postprocess import (
+from pii_proxi.detection.base import Span
+from pii_proxi.detection.postprocess import (
     PostProcessor,
     load_calibration,
 )

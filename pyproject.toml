@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "code-masker"
+name = "pii-proxi"
 version = "0.1.0"
 description = "Local privacy-filter proxy for coding assistants (Claude Code, Codex CLI, etc)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "code-masker" }]
+authors = [{ name = "pii-proxi" }]
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
@@ -23,7 +23,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mlx = ["mlx-lm>=0.14"]
+mlx = [
+    "mlx>=0.18",
+    # The ``openai_privacy_filter`` architecture isn't in the 0.1.0 PyPI
+    # release yet; install from git (same maintainer who publishes the
+    # mlx-community model conversions). Switch back to a PyPI pin once a
+    # release ships with ``mlx_embeddings/models/openai_privacy_filter.py``.
+    "mlx-embeddings @ git+https://github.com/Blaizzy/mlx-embeddings.git",
+]
 onnx = ["onnxruntime>=1.17"]
 dev = [
     "pytest>=8.0",
@@ -33,10 +40,16 @@ dev = [
 ]
 
 [project.scripts]
-code-masker = "code_masker.cli:app"
+pii-proxi = "pii_proxi.cli:app"
+
+[tool.hatch.metadata]
+# The ``mlx`` extra pulls ``mlx-embeddings`` from a git URL (see comment in
+# ``[project.optional-dependencies].mlx``); hatch refuses direct references
+# without this opt-in.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/code_masker"]
+packages = ["src/pii_proxi"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src", "/README.md", "/pyproject.toml"]

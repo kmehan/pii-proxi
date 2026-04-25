@@ -13,14 +13,13 @@ import json
 import re
 
 import httpx
-import pytest
 import respx
 from fastapi.testclient import TestClient
 
-from code_masker.config import Config
-from code_masker.masking.placeholder import PlaceholderMap
-from code_masker.server import create_app
-from code_masker.session import new_session_key
+from pii_proxi.config import Config
+from pii_proxi.masking.placeholder import PlaceholderMap
+from pii_proxi.server import create_app
+from pii_proxi.session import new_session_key
 
 from .conftest import FakeDetector, FakeSpan
 
@@ -156,6 +155,62 @@ def test_streaming_sse_unmasks_placeholders_back_to_plaintext():
     received = resp.content
     assert SECRET.encode() in received
     assert ph.encode() not in received
+
+
+def test_streaming_unmasks_lowercase_label_placeholder():
+    """Regression: detector emits lowercase labels (``private_person``,
+    ``private_email``...). An older placeholder regex required uppercase and
+    silently leaked these back to the client. End-to-end check using the same
+    label shape the real model emits, with synthetic data only.
+    """
+    sample = "Ada Lovelace"
+    prompt = f"My name is {sample}. Who am I?"
+    name_start = prompt.index(sample)
+    detector = FakeDetector({
+        prompt: [FakeSpan(name_start, name_start + len(sample), "private_person")],
+    })
+    pmap = PlaceholderMap(new_session_key())
+    app = _make_app(detector, pmap=pmap)
+
+    ph = pmap.mask(sample, "private_person")
+    assert "⟦private_person_" in ph  # sanity: lowercase label preserved in placeholder
+
+    sse_body = (
+        b"event: content_block_delta\n"
+        b'data: {"delta":{"text":"You said your name is ' + ph.encode() + b'."}}\n\n'
+        b"event: message_stop\ndata: {}\n\n"
+    )
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.post(f"{UPSTREAM}/v1/messages").mock(
+            return_value=httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=sse_body,
+            )
+        )
+        with TestClient(app) as client:
+            resp = client.post(
+                "/anthropic/v1/messages",
+                headers={
+                    "x-api-key": "sk-ant-fake",
+                    "anthropic-version": "2023-06-01",
+                    "accept": "text/event-stream",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-3-opus-20240229",
+                    "max_tokens": 128,
+                    "stream": True,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+
+    assert resp.status_code == 200
+    received = resp.content
+    assert sample.encode() in received, "client should see the unmasked plaintext"
+    assert b"private_person_" not in received, "no placeholder bytes should leak"
+    assert "⟦".encode() not in received
 
 
 def test_upstream_error_passes_through_unchanged():
