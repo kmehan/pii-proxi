@@ -8,15 +8,15 @@ that the final ``(start, end, label)`` tuples agree.
 Skipped automatically unless:
 * both ``mlx``/``mlx_lm`` and ``onnxruntime`` are importable, AND
 * both model paths are provided via env vars
-  (``CODE_MASKER_MODEL_MLX`` / ``CODE_MASKER_MODEL_ONNX``), AND
+  (``PII_PROXI_MODEL_MLX`` / ``PII_PROXI_MODEL_ONNX``), AND
 * a calibration file path is provided via
-  ``CODE_MASKER_CALIBRATION``.
+  ``PII_PROXI_CALIBRATION``.
 
 Set these once you have the models cached locally. Example::
 
-    export CODE_MASKER_MODEL_MLX=~/.cache/code-masker/models/mlx-8bit
-    export CODE_MASKER_MODEL_ONNX=~/.cache/code-masker/models/onnx-fp16
-    export CODE_MASKER_CALIBRATION=~/.cache/code-masker/calibration/viterbi_calibration.json
+    export PII_PROXI_MODEL_MLX=~/.cache/pii-proxi/models/mlx-8bit
+    export PII_PROXI_MODEL_ONNX=~/.cache/pii-proxi/models/onnx-fp16
+    export PII_PROXI_CALIBRATION=~/.cache/pii-proxi/calibration/viterbi_calibration.json
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _deps_available() -> tuple[bool, str]:
     for mod in ("mlx", "mlx_lm", "onnxruntime"):
         if importlib.util.find_spec(mod) is None:
             return False, f"missing dependency: {mod}"
-    for env in ("CODE_MASKER_MODEL_MLX", "CODE_MASKER_MODEL_ONNX", "CODE_MASKER_CALIBRATION"):
+    for env in ("PII_PROXI_MODEL_MLX", "PII_PROXI_MODEL_ONNX", "PII_PROXI_CALIBRATION"):
         val = os.environ.get(env)
         if not val:
             return False, f"missing env var: {env}"
@@ -58,12 +58,12 @@ _ok, _reason = _deps_available()
 
 @pytest.mark.skipif(not _ok, reason=_reason or "parity test prerequisites not met")
 def test_mlx_and_onnx_agree_on_fixtures() -> None:
-    from code_masker.detection.mlx_backend import MLXDetector
-    from code_masker.detection.onnx_backend import ONNXDetector
+    from pii_proxi.detection.mlx_backend import MLXDetector
+    from pii_proxi.detection.onnx_backend import ONNXDetector
 
-    calibration = os.environ["CODE_MASKER_CALIBRATION"]
-    mlx_det = MLXDetector(os.environ["CODE_MASKER_MODEL_MLX"], calibration)
-    onnx_det = ONNXDetector(os.environ["CODE_MASKER_MODEL_ONNX"], calibration)
+    calibration = os.environ["PII_PROXI_CALIBRATION"]
+    mlx_det = MLXDetector(os.environ["PII_PROXI_MODEL_MLX"], calibration)
+    onnx_det = ONNXDetector(os.environ["PII_PROXI_MODEL_ONNX"], calibration)
 
     mlx_spans = mlx_det.detect(FIXTURES)
     onnx_spans = onnx_det.detect(FIXTURES)

@@ -25,15 +25,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from code_masker.detection.base import Span
-from code_masker.detection.postprocess import (
+from pii_proxi.detection.base import Span
+from pii_proxi.detection.postprocess import (
     PostProcessor,
     extract_id2label,
     load_calibration,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    import mlx.core as mx
+    pass
 
 
 class MLXDetector:

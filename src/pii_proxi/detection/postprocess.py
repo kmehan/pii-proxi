@@ -62,12 +62,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Mapping
 
 import numpy as np
 import tiktoken
 
-from code_masker.detection.base import Span
+from pii_proxi.detection.base import Span
 
 
 # tiktoken's pad token id. o200k_base doesn't ship with a canonical pad;
@@ -137,7 +137,7 @@ class PostProcessor:
         self.id2label: list[str] = [""] * self.num_labels
         for k, v in id2label.items():
             self.id2label[int(k)] = v
-        self._parsed: list[tuple[str, str]] = [_parse_label(l) for l in self.id2label]
+        self._parsed: list[tuple[str, str]] = [_parse_label(lbl) for lbl in self.id2label]
 
         # Pre-compute legal transitions + additive bias.
         self._transitions = self._build_transitions(calibration)
@@ -345,7 +345,6 @@ class PostProcessor:
         tok_start_char = [len(text)] * n_tokens
         tok_end_char = [0] * n_tokens
         tok_has_char = [False] * n_tokens
-        prev_char_assigned_to: int | None = None
         for char_i, end_byte in enumerate(char_byte_end):
             while tok_idx < n_tokens and token_byte_end[tok_idx] < end_byte:
                 tok_idx += 1
@@ -357,7 +356,6 @@ class PostProcessor:
                 tok_start_char[owner] = char_i
                 tok_has_char[owner] = True
             tok_end_char[owner] = char_i + 1
-            prev_char_assigned_to = owner
 
         # For tokens that received no character (because they only held
         # internal bytes of a char that was credited to the next token),

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from code_masker.masking.extractor import extract_anthropic, extract_openai
-from code_masker.masking.injector import inject, set_by_pointer
-from code_masker.masking.placeholder import PlaceholderMap, Span, apply_spans
+from pii_proxi.masking.extractor import extract_anthropic, extract_openai
+from pii_proxi.masking.injector import inject, set_by_pointer
+from pii_proxi.masking.placeholder import PlaceholderMap, Span, apply_spans
 
 
 FIXTURES = json.loads(

@@ -1,187 +1,72 @@
-# code-masker
+# pii-proxi
 
-`code-masker` is a local HTTP proxy that sits between coding assistants and their upstream APIs. It classifies outbound prompts, swaps detected secrets / PII / credentials for reversible placeholders, forwards the sanitized request, and unmasks placeholders in the streamed response so the assistant's suggested code still references your real identifiers. The goal: work with cloud coding assistants without constantly second-guessing what ended up in the prompt.
+Drop-in local proxy that strips PII and secrets from prompts before they reach any LLM API and seamlessly restores them in responses, so you can use any cloud model worry-free without changing your workflow. Detection runs entirely on-device using OpenAI's open-weight privacy-filter model, and the proxy is transparent at the auth layer — it works with API keys and OAuth (Claude Pro/Max, Sign in with ChatGPT) alike.
 
-Detection runs on-device using OpenAI's open-weight privacy-filter model (~1.5 GB MLX 8-bit on Apple Silicon, ~2.6 GB ONNX FP16 elsewhere). Nothing about what was flagged leaves the machine.
+## Quick start
 
-## Setup
+Requires Python 3.11+. Pick `[mlx]` on Apple Silicon (fastest), `[onnx]` on Linux / Intel / Windows.
 
-Requires Python 3.11+.
-
-### 1. Clone and create a virtualenv
+Install — option A (single command, recommended):
 
 ```bash
-git clone <this repo> code-masker
-cd code-masker
-python3 -m venv .venv
-source .venv/bin/activate
+pipx install "git+https://github.com/<owner>/pii-proxi.git#egg=pii-proxi[mlx]"
 ```
 
-### 2. Install
-
-Apple Silicon (recommended — uses MLX, fastest on M-series):
+Install — option B (clone for development):
 
 ```bash
-pip install -e ".[mlx,dev]"
+git clone https://github.com/<owner>/pii-proxi.git && cd pii-proxi
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[mlx]"   # or ".[onnx]"
 ```
 
-> **Note:** the `[mlx]` extra pulls `mlx-embeddings` from git (the `openai_privacy_filter` architecture isn't in its 0.1.0 PyPI release yet). This will be swapped back to a PyPI pin once the maintainer cuts a release containing it.
-
-Linux / Windows / Intel Mac (ONNX backend):
+Then:
 
 ```bash
-pip install -e ".[onnx,dev]"
+pii-proxi setup     # detects backend, fetches model + calibration, writes default config
+pii-proxi serve
 ```
 
-After install, `code-masker --help` should work *while the venv is active*. The binary lives at `.venv/bin/code-masker` — if you want it on your global `$PATH`, install with `pipx install -e ".[mlx]"` instead of the commands above.
-
-### 3. Download the model
+In a separate shell, point your client at the proxy:
 
 ```bash
-pip install huggingface_hub           # if you don't have it already; ships the `hf` CLI
-
-# MLX weights (Apple Silicon build)
-hf download mlx-community/openai-privacy-filter-8bit \
-    --local-dir ~/.cache/code-masker/models/mlx-8bit
-
-# Viterbi calibration file — lives in the ONNX repo but is needed by both backends
-hf download yasserrmd/privacy-filter-ONNX viterbi_calibration.json \
-    --local-dir ~/.cache/code-masker/models
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
+export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
 ```
 
-> The older `huggingface-cli` command is deprecated; use `hf` instead. If you see the deprecation warning, you're on a recent `huggingface_hub` — `hf` is already installed.
-
-ONNX users also download the FP16 export from `yasserrmd/privacy-filter-ONNX` and point `model_path` at that directory (see Config below).
-
-### 4. Create the config
-
-Copy the example config:
+Sanity-check the detector without wiring a client:
 
 ```bash
-mkdir -p ~/.config/code-masker
-cp config.example.toml ~/.config/code-masker/config.toml
+pii-proxi test "my key is sk-live-AAAABBBBCCCCDDDD and email foo@bar.com"
 ```
 
-The example is set up for the MLX backend with the paths from step 3. Edit it if you're on ONNX or put the model somewhere else.
+## Run it persistently
 
-<details>
-<summary>Prefer to create it by hand?</summary>
+| Platform | Command |
+|---|---|
+| macOS (launchd) | `./scripts/install-launchd.sh` |
+| Linux (systemd user unit) | `./scripts/install-systemd.sh` |
+| Manual / dev | `pii-proxi serve` under tmux or screen |
 
-```bash
-mkdir -p ~/.config/code-masker
-nano ~/.config/code-masker/config.toml     # paste the three lines, Ctrl-O, Ctrl-X
-```
+Uninstall with `./scripts/uninstall.sh`.
 
-Minimum contents:
+## Point your client at the proxy
 
-```toml
-backend = "mlx"
-model_path = "~/.cache/code-masker/models/mlx-8bit"
-calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
-```
-
-(Avoid the `cat > file <<'EOF' … EOF` heredoc form interactively — the closing `EOF` has to be at column 0 on its own line, and it's easy to get stuck in an unterminated heredoc.)
-
-</details>
-
-### 5. Start the proxy
-
-```bash
-code-masker serve
-```
-
-You should see:
-
-```
-  code-masker listening on 127.0.0.1:8787
-    export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
-    export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
-```
-
-Leave this terminal running.
-
-### 6. Point your coding assistant at the proxy
-
-In a **separate terminal**, export the base URL for whichever client you use, then launch it normally:
-
-**Claude Code** (API key *or* Pro/Max OAuth — both work):
+**Claude Code** — works with `ANTHROPIC_API_KEY` and Pro/Max OAuth; the OAuth bearer rides through `Authorization` the same way an API key does, so `ANTHROPIC_BASE_URL` is honored either way:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
 claude
 ```
 
-**Codex CLI / aider / continue.dev / any OpenAI-compatible client:**
+**Codex CLI / aider / continue.dev** (any OpenAI-compatible client):
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
-codex    # or: aider, continue, etc.
+codex   # or: aider, continue, ...
 ```
 
-**Cursor (BYO API key mode only):** Settings → Models → OpenAI Base URL → `http://127.0.0.1:8787/openai/v1`. Cursor Pro subscriptions are *not* supported — see the table below.
-
-### Smoke test
-
-Before wiring a real client, sanity-check the detector on a throwaway string:
-
-```bash
-code-masker test "my key is sk-live-AAAABBBBCCCCDDDD and email foo@bar.com"
-```
-
-This prints detected spans and the masked form. Loading the MLX model takes a few seconds the first time.
-
-## Observing masking activity
-
-Every proxied request emits a one-line summary to the proxy's stdout showing how many spans were masked, broken down by label:
-
-```
-INFO:     code_masker.mask: masked 2 span(s) across 1 text(s): private_email=1, secret=1
-INFO:     127.0.0.1:65155 - "POST /anthropic/v1/messages HTTP/1.1" 200 OK
-```
-
-Counts only — no plaintext. Safe to leave on anywhere.
-
-For local debugging you can also log the detected plaintext alongside each label. This is **off by default** (a privacy tool shouldn't log secrets unless you ask it to). Turn it on by adding one line to your config:
-
-```bash
-echo 'log_entities = true' >> ~/.config/code-masker/config.toml
-```
-
-Then restart the proxy. You'll additionally see:
-
-```
-INFO:     code_masker.mask:   secret: ' sk-live-AAAABBBBCCCCDDDD'
-INFO:     code_masker.mask:   private_email: ' alice@example.com'
-```
-
-**Do not enable `log_entities` on a shared machine, in a CI job, or anywhere the proxy's stdout could be captured, uploaded, or shipped off-box** — the whole point of the proxy is to keep those strings off the wire, and logging them locally defeats that if the logs aren't private.
-
-## Config
-
-Optional TOML at `~/.config/code-masker/config.toml`:
-
-```toml
-port = 8787
-backend = "mlx"                   # "mlx" | "onnx"
-model_path = "~/.cache/code-masker/models/mlx-8bit"
-calibration_path = "~/.cache/code-masker/models/viterbi_calibration.json"
-disabled_labels = []              # e.g. ["private_email"] to skip that entity class
-log_path = "~/.local/state/code-masker/audit.log"
-anthropic_upstream = "https://api.anthropic.com"
-openai_upstream = "https://api.openai.com"
-log_entities = false              # see "Observing masking activity" — off by default
-```
-
-Every field also reads from `CODE_MASKER_<NAME>` env vars for one-off overrides.
-
-## CLI
-
-| Command | Purpose |
-|---|---|
-| `code-masker serve` | Start the proxy. |
-| `code-masker test "some text"` | One-shot detection, prints spans + masked form. |
-| `code-masker status` | Probe the running proxy's `/healthz`. |
-| `code-masker clear-session` | Drop the in-memory placeholder map. |
+**Cursor (BYO key only):** Settings → Models → OpenAI Base URL → `http://127.0.0.1:8787/openai/v1`. Cursor Pro subscriptions are not supported (see table).
 
 ## Supported clients
 
@@ -195,6 +80,55 @@ Every field also reads from `CODE_MASKER_<NAME>` env vars for one-off overrides.
 | Cursor | BYO API key | yes | Uses Cursor's custom-base-URL setting. |
 | Cursor | Cursor Pro subscription | no | Cursor Pro routes through `api.cursor.sh` with vendor-managed auth; no client-side base-URL override. Would require TLS MITM, which is out of scope. |
 
+## Configuration
+
+`pii-proxi setup` writes a working default to `~/.config/pii-proxi/config.toml`. You only need to edit it to override the defaults:
+
+```toml
+port = 8787
+backend = "mlx"                    # "mlx" | "onnx"
+model_path = "~/.cache/pii-proxi/models/mlx-8bit"
+calibration_path = "~/.cache/pii-proxi/models/viterbi_calibration.json"
+disabled_labels = []               # e.g. ["private_email"] to skip a class
+log_path = "~/.local/state/pii-proxi/audit.log"
+anthropic_upstream = "https://api.anthropic.com"
+openai_upstream = "https://api.openai.com"
+log_entities = false               # see Observability — off by default
+```
+
+Every field also reads from `PII_PROXI_<NAME>` env vars for one-off overrides.
+
+## Observability
+
+Counts are always logged to stdout — no plaintext, safe to leave on:
+
+```
+INFO:     pii_proxi.mask: masked 2 span(s) across 1 text(s): private_email=1, secret=1
+```
+
+Plaintext logging is opt-in (`log_entities = true`) and emits the detected strings alongside the count line:
+
+```
+INFO:     pii_proxi.mask:   secret: ' sk-live-AAAABBBBCCCCDDDD'
+INFO:     pii_proxi.mask:   private_email: ' alice@example.com'
+```
+
+Do **not** enable `log_entities` on a shared machine, in CI, or anywhere stdout could be captured or shipped off-box — that defeats the point of the proxy.
+
+## CLI
+
+| Command | Purpose |
+|---|---|
+| `pii-proxi setup` | One-time: detect backend, write config, fetch model, warm up. |
+| `pii-proxi serve` | Start the proxy. |
+| `pii-proxi test "text"` | One-shot detection on a string. |
+| `pii-proxi status` | Probe the running proxy's `/healthz`. |
+| `pii-proxi clear-session` | Drop the in-memory placeholder map. |
+
 ## Threat model
 
-Local-only (binds `127.0.0.1` by default). Forwards `x-api-key` / `Authorization` headers verbatim — the proxy is transparent at the auth layer. The placeholder map is process-scoped and lives only in memory; nothing about the plaintext of flagged spans is logged or persisted. Clearing the map (`code-masker clear-session`) or restarting the process rolls a fresh session key.
+Local-only (binds `127.0.0.1` by default). Forwards `x-api-key` / `Authorization` headers verbatim — the proxy is local-only and transparent at the auth layer, so your credentials never get inspected. The placeholder map is process-scoped and lives only in memory; nothing about the plaintext of flagged spans is logged or persisted. Clearing the map (`pii-proxi clear-session`) or restarting the process rolls a fresh session key.
+
+## Roadmap
+
+- Universal proxy mode: config-driven extractors so any upstream API can be PII-masked, not just Anthropic + OpenAI.

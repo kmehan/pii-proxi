@@ -23,7 +23,7 @@ from .routes import anthropic_router, openai_router
 from .session import new_session_key
 
 
-log = logging.getLogger("code_masker.server")
+log = logging.getLogger("pii_proxi.server")
 
 
 def backend_factory(name: str, config: Config) -> Detector:
@@ -101,7 +101,7 @@ def create_app(
             if owns_client:
                 await client.aclose()
 
-    app = FastAPI(title="code-masker", lifespan=lifespan)
+    app = FastAPI(title="pii-proxi", lifespan=lifespan)
     app.include_router(anthropic_router)
     app.include_router(openai_router)
 

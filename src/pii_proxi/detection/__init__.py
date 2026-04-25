@@ -1,4 +1,4 @@
-"""Detection subsystem for code-masker.
+"""Detection subsystem for pii-proxi.
 
 Exports the ``Detector`` protocol and ``Span`` dataclass plus the backend
 implementations. Backend modules import their heavy dependencies
@@ -6,7 +6,7 @@ implementations. Backend modules import their heavy dependencies
 platform regardless of which extras are installed.
 """
 
-from code_masker.detection.base import Detector, Span
-from code_masker.detection.postprocess import PostProcessor
+from pii_proxi.detection.base import Detector, Span
+from pii_proxi.detection.postprocess import PostProcessor
 
 __all__ = ["Detector", "Span", "PostProcessor"]

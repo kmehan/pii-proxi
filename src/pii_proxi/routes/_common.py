@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
-from typing import Any, Awaitable, Callable, Iterable
+from typing import Any, Callable, Iterable
 
 import httpx
 from fastapi import Request, Response
@@ -26,7 +26,7 @@ from ..masking.injector import inject
 from ..masking.unmask_stream import UnmaskStream
 
 
-_log = logging.getLogger("code_masker.mask")
+_log = logging.getLogger("pii_proxi.mask")
 
 
 # Hop-by-hop headers per RFC 7230 §6.1, plus a couple of well-known
