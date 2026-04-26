@@ -9,6 +9,15 @@ calibration_path = "~/.cache/pii-proxi/models/viterbi_calibration.json"
 # log_path = "~/.local/state/pii-proxi/audit.log"
 # anthropic_upstream = "https://api.anthropic.com"
 # openai_upstream = "https://api.openai.com"
+
+# Logs the detected plaintext alongside each entity label. Off by default.
+# Safe for a single-user local setup; do NOT enable anywhere the proxy's
+# stdout/logs could be captured, uploaded, or shipped off-box.
+# Must stay above any [providers.*] table — TOML scopes bare keys to the
+# most recent table heading, so placing this below would silently make it
+# a per-provider field instead of a top-level one.
+# log_entities = true
+
 #
 # --- Multiple providers (optional) -------------------------------------------
 # Register any number of upstreams under [providers.<name>]. Each provider is
@@ -38,8 +47,3 @@ calibration_path = "~/.cache/pii-proxi/models/viterbi_calibration.json"
 # [providers.deepseek-oai]
 # format = "openai"
 # upstream = "https://api.deepseek.com"
-
-# Logs the detected plaintext alongside each entity label. Off by default.
-# Safe for a single-user local setup; do NOT enable anywhere the proxy's
-# stdout/logs could be captured, uploaded, or shipped off-box.
-# log_entities = true
