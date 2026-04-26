@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from .config import Config
 from .detection.base import Detector
 from .masking.placeholder import PlaceholderMap
-from .routes import anthropic_router, openai_router
+from .routes import make_anthropic_router, make_openai_router
 from .session import new_session_key
 
 
@@ -102,8 +102,12 @@ def create_app(
                 await client.aclose()
 
     app = FastAPI(title="pii-proxi", lifespan=lifespan)
-    app.include_router(anthropic_router)
-    app.include_router(openai_router)
+    for name, p in cfg.providers.items():
+        if p.format == "anthropic":
+            app.include_router(make_anthropic_router(name, p.upstream))
+        else:
+            app.include_router(make_openai_router(name, p.upstream))
+        log.info("mounted %s (%s) -> %s", name, p.format, p.upstream)
 
     @app.get("/healthz")
     async def healthz(request: Request) -> dict[str, Any]:

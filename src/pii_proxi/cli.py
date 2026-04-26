@@ -113,6 +113,15 @@ def _proxy_base_url(cfg: Config) -> str:
     return f"http://{cfg.host}:{cfg.port}"
 
 
+def _print_provider_hints(cfg: Config, prefix: str = "    ") -> None:
+    base = f"http://{cfg.host}:{cfg.port}"
+    for name, p in cfg.providers.items():
+        if p.format == "anthropic":
+            typer.echo(f"{prefix}export ANTHROPIC_BASE_URL={base}/{name}")
+        else:
+            typer.echo(f"{prefix}export OPENAI_BASE_URL={base}/{name}/v1")
+
+
 def _write_default_config(backend: str) -> None:
     """Write a starter ``config.toml`` for the chosen backend.
 
@@ -196,8 +205,7 @@ def setup() -> None:
 
     typer.echo("")
     typer.echo("setup complete. Next steps:")
-    typer.echo(f"    export ANTHROPIC_BASE_URL=http://{cfg.host}:{cfg.port}/anthropic")
-    typer.echo(f"    export OPENAI_BASE_URL=http://{cfg.host}:{cfg.port}/openai/v1")
+    _print_provider_hints(cfg)
     typer.echo("    pii-proxi serve")
 
 
@@ -219,8 +227,7 @@ def serve(
     application = create_app(config=cfg)
 
     typer.echo(f"  pii-proxi listening on {cfg.host}:{cfg.port}")
-    typer.echo(f"    export ANTHROPIC_BASE_URL=http://{cfg.host}:{cfg.port}/anthropic")
-    typer.echo(f"    export OPENAI_BASE_URL=http://{cfg.host}:{cfg.port}/openai/v1")
+    _print_provider_hints(cfg)
     typer.echo("")
     typer.echo("  Backend: " + cfg.backend)
     typer.echo("")
@@ -294,6 +301,24 @@ def clear_session(
     typer.echo(f"{resp.status_code} {resp.text}")
     if resp.status_code != 200:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def providers(
+    config_path: Optional[str] = typer.Option(
+        None, "--config", "-c", help="Override config TOML path."
+    ),
+) -> None:
+    """List registered providers and their local URLs."""
+    cfg = Config.load(config_path)
+    base = f"http://{cfg.host}:{cfg.port}"
+    rows = [("NAME", "FORMAT", "UPSTREAM", "LOCAL URL")]
+    for name, p in cfg.providers.items():
+        local = f"{base}/{name}/v1" if p.format == "openai" else f"{base}/{name}"
+        rows.append((name, p.format, p.upstream, local))
+    widths = [max(len(r[i]) for r in rows) for i in range(4)]
+    for r in rows:
+        typer.echo("  ".join(c.ljust(w) for c, w in zip(r, widths)))
 
 
 if __name__ == "__main__":  # pragma: no cover

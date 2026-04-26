@@ -10,11 +10,34 @@ calibration_path = "~/.cache/pii-proxi/models/viterbi_calibration.json"
 # anthropic_upstream = "https://api.anthropic.com"
 # openai_upstream = "https://api.openai.com"
 #
-# DeepSeek exposes an Anthropic-compatible endpoint at /anthropic. To send
-# /anthropic/* through DeepSeek instead of Anthropic, swap the line above for:
-#   anthropic_upstream = "https://api.deepseek.com/anthropic"
-# Pick any DeepSeek model in the request body; unknown names fall back to
-# deepseek-v4-flash on their side.
+# --- Multiple providers (optional) -------------------------------------------
+# Register any number of upstreams under [providers.<name>]. Each provider is
+# mounted at /<name> on the proxy. The legacy anthropic_upstream / openai_upstream
+# keys above still work and seed default `anthropic` / `openai` providers when
+# this table is absent.
+#
+# format = "anthropic"  -> exposes POST /<name>/v1/messages, point your
+#                          Anthropic SDK at  ANTHROPIC_BASE_URL=http://127.0.0.1:8787/<name>
+# format = "openai"     -> exposes POST /<name>/v1/chat/completions, point your
+#                          OpenAI SDK at     OPENAI_BASE_URL=http://127.0.0.1:8787/<name>/v1
+#
+# [providers.openai]
+# format = "openai"
+# upstream = "https://api.openai.com"
+#
+# [providers.anthropic]
+# format = "anthropic"
+# upstream = "https://api.anthropic.com"
+#
+# DeepSeek via its Anthropic-compatible endpoint:
+# [providers.deepseek]
+# format = "anthropic"
+# upstream = "https://api.deepseek.com/anthropic"
+#
+# DeepSeek via its native OpenAI-shape API:
+# [providers.deepseek-oai]
+# format = "openai"
+# upstream = "https://api.deepseek.com"
 
 # Logs the detected plaintext alongside each entity label. Off by default.
 # Safe for a single-user local setup; do NOT enable anywhere the proxy's

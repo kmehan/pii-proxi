@@ -9,15 +9,32 @@ never has to think about ``~``.
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, Literal
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 DEFAULT_CONFIG_PATH = Path("~/.config/pii-proxi/config.toml").expanduser()
+
+_PROVIDER_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+class ProviderConfig(BaseModel):
+    """Upstream provider entry for multi-provider proxy mode."""
+
+    format: Literal["openai", "anthropic"]
+    upstream: str
+
+    @field_validator("upstream", mode="before")
+    @classmethod
+    def _strip_trailing_slash(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.rstrip("/")
+        return v
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -55,6 +72,12 @@ class Config(BaseSettings):
     # single-user use; do not enable on shared machines or in any context
     # where the proxy's stdout/log may be captured, uploaded, or shipped.
     log_entities: bool = False
+    providers: dict[str, "ProviderConfig"] = Field(default_factory=dict)
+
+    # matches FastAPI's built-in route paths
+    _RESERVED_PROVIDER_NAMES: ClassVar[frozenset[str]] = frozenset(
+        {"healthz", "admin", "docs", "redoc", "openapi.json"}
+    )
 
     @field_validator("model_path", "calibration_path", "log_path", mode="before")
     @classmethod
@@ -69,6 +92,28 @@ class Config(BaseSettings):
         if v not in ("mlx", "onnx"):
             raise ValueError(f"backend must be 'mlx' or 'onnx', got {v!r}")
         return v
+
+    @model_validator(mode="after")
+    def _finalize_providers(self) -> "Config":
+        for name in self.providers:
+            if name in self._RESERVED_PROVIDER_NAMES:
+                raise ValueError(
+                    f"provider name {name!r} is reserved and cannot be used"
+                )
+            if not _PROVIDER_NAME_RE.match(name):
+                raise ValueError(
+                    f"provider name {name!r} is invalid: must match "
+                    r"^[a-z0-9][a-z0-9_-]*$"
+                )
+        if "anthropic" not in self.providers:
+            self.providers["anthropic"] = ProviderConfig(
+                format="anthropic", upstream=self.anthropic_upstream
+            )
+        if "openai" not in self.providers:
+            self.providers["openai"] = ProviderConfig(
+                format="openai", upstream=self.openai_upstream
+            )
+        return self
 
     @classmethod
     def load(cls, path: Path | str | None = None) -> "Config":
