@@ -121,6 +121,14 @@ Set `PII_PROXI_OPENAI_UPSTREAM` to send `/openai/*` anywhere that speaks Chat Co
 
 Use the route that matches your client's wire format: `/anthropic/v1/messages` for Anthropic, `/openai/v1/chat/completions` for OpenAI-compatible. The proxy is a PII-masking proxy, not a format translator.
 
+DeepSeek also exposes an **Anthropic-compatible** endpoint, so you can route the `/anthropic` side through it too:
+
+| Upstream | `PII_PROXI_ANTHROPIC_UPSTREAM` | Docs |
+|---|---|---|
+| DeepSeek (Anthropic format) | `https://api.deepseek.com/anthropic` | <https://api-docs.deepseek.com/guides/anthropic_api> |
+
+Pick any DeepSeek model name in the request body — unsupported names fall back to `deepseek-v4-flash` server-side.
+
 ### Supported clients
 
 | Client | Auth mode | Supported | Notes |

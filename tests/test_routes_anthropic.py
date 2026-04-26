@@ -306,6 +306,40 @@ def test_streaming_unmasks_placeholder_split_across_events():
     assert "⟦" not in rendered
 
 
+def test_upstream_with_subpath_prefix_concatenates_correctly():
+    """DeepSeek's Anthropic-compatible endpoint sits at
+    ``https://api.deepseek.com/anthropic``, i.e. the configured upstream
+    already has a path component. The route must append ``/v1/messages``
+    onto that prefix rather than replacing it.
+    """
+    deepseek_upstream = "https://api.deepseek.com/anthropic"
+    detector = FakeDetector()
+    cfg = Config(
+        anthropic_upstream=deepseek_upstream,
+        openai_upstream="https://api.openai.com",
+    )
+    app = create_app(config=cfg, detector=detector)
+
+    with respx.mock(assert_all_called=True) as mock:
+        route = mock.post(f"{deepseek_upstream}/v1/messages").mock(
+            return_value=httpx.Response(200, json={"content": []})
+        )
+
+        with TestClient(app) as client:
+            resp = client.post(
+                "/anthropic/v1/messages",
+                headers={"x-api-key": "sk-ds-fake", "anthropic-version": "2023-06-01"},
+                json={
+                    "model": "deepseek-v4-pro",
+                    "max_tokens": 16,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+
+    assert resp.status_code == 200
+    assert str(route.calls.last.request.url) == f"{deepseek_upstream}/v1/messages"
+
+
 def test_upstream_error_passes_through_unchanged():
     detector = FakeDetector()
     app = _make_app(detector)
