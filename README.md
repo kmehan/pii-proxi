@@ -106,6 +106,29 @@ export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
 
 The proxy is transparent at the auth layer: `Authorization` and `x-api-key` are forwarded verbatim, so API keys **and** Pro/Max OAuth bearers ride through unchanged.
 
+### Multiple providers
+
+Register as many upstreams as you want in `~/.config/pii-proxi/config.toml` under `[providers.<name>]`. Each entry is mounted at `/<name>` on the proxy, with `format = "openai"` exposing `/<name>/v1/chat/completions` and `format = "anthropic"` exposing `/<name>/v1/messages`.
+
+```toml
+[providers.openai]
+format = "openai"
+upstream = "https://api.openai.com"
+
+[providers.deepseek]
+format = "anthropic"
+upstream = "https://api.deepseek.com/anthropic"
+```
+
+Then point each SDK at its own mount:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8787/openai/v1
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/deepseek
+```
+
+Run `pii-proxi providers` to print the registered set with their local URLs. The legacy `anthropic_upstream` / `openai_upstream` keys still work and seed default `anthropic` / `openai` providers when no `[providers]` table is defined. System-wide / browser interception (no per-tool base-URL config) is planned but requires installing a local CA — tracked separately.
+
 ### Swap the upstream
 
 Set `PII_PROXI_OPENAI_UPSTREAM` to send `/openai/*` anywhere that speaks Chat Completions:
